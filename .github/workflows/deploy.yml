@@ -1,0 +1,47 @@
+name: Deploy Node.js App to AWS EC2
+
+on:
+  push:
+    branches:
+      - main  # Chạy workflow khi push lên branch main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      - name: Deploy to AWS EC2
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: "ec2-user"
+        run: |
+          ssh -i private_key.pem -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
+            # Cấu hình Git
+            sudo git config --global --add safe.directory /var/www/khanhtc_node_app
+
+            # Set quyền cho thư mục dự án
+            sudo chown -R ec2-user:ec2-user /var/www/khanhtc_node_app
+            sudo chmod -R 775 /var/www/khanhtc_node_app
+
+            # Di chuyển vào thư mục dự án
+            cd /var/www/khanhtc_node_app
+
+            # Pull code mới nhất
+            git reset --hard  # Xóa local changes nếu có
+            git pull origin main
+
+            # Cài đặt dependencies
+            npm install --production
+
+            # Restart ứng dụng với PM2
+            pm2 reload khanhtc_app || pm2 start server.js --name khanhtc_app
+            pm2 save
+          EOF
